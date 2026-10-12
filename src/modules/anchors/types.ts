@@ -108,6 +108,8 @@ export interface Entitlement {
   originVisitId: string | null;
   /** Specific item (e.g. the bottle) or null when coverage is a category. */
   itemId: string | null;
+  /** upgrade_offer = paid extra at checkout; stored_purchase = already bought and expensed. */
+  issueMode: AnchorIssueMode;
   /** Customer-facing name: "Main", "Macallan 12", "Pint", "60-min Massage". */
   displayName: string;
   unitType: AnchorUnitType;
