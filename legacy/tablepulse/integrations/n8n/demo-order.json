@@ -1,0 +1,8 @@
+{
+  "externalId": "demo-pos-order-001",
+  "sessionId": "00000000-0000-4000-8000-000000000204",
+  "items": [
+    { "menuItemId": "00000000-0000-4000-8000-000000000009", "quantity": 1 }
+  ],
+  "discount": false
+}

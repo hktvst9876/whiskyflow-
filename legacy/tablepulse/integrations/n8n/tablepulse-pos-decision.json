@@ -1,0 +1,338 @@
+{
+  "name": "TablePulse — secure POS order and agentic deal decision",
+  "active": false,
+  "nodes": [
+    {
+      "id": "pos",
+      "name": "POS order webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tablepulse-pos-order",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "tablepulse-pos-order-v1",
+      "notes": "Select a Header Auth credential: x-tablepulse-pos-key. Only the trusted POS/adapter may call this webhook. Publish after testing."
+    },
+    {
+      "id": "validate",
+      "name": "Validate order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// n8n Code node: run once for all items. No libraries, secrets or database access.\nconst input = $input.first().json.body;\nconst uuid =\n  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\nconst record = (v) => v !== null && typeof v === \"object\" && !Array.isArray(v);\nconst invalid = (message) => [\n  {\n    json: {\n      valid: false,\n      statusCode: 400,\n      response: {\n        ok: false,\n        error: { code: \"INVALID_EVENT\", message, retryable: false },\n      },\n    },\n  },\n];\nif (!record(input)) return invalid(\"Send a JSON object as the request body.\");\nif (\n  Object.keys(input).some(\n    (k) =>\n      ![\"externalId\", \"sessionId\", \"customerRef\", \"items\", \"discount\"].includes(\n        k,\n      ),\n  )\n)\n  return invalid(\n    \"Send canonical order fields only; do not include phone numbers or customer profiles.\",\n  );\nif (\n  typeof input.externalId !== \"string\" ||\n  !input.externalId.trim() ||\n  input.externalId.length > 128\n)\n  return invalid(\"A stable POS externalId of 1–128 characters is required.\");\nif (typeof input.sessionId !== \"string\" || !uuid.test(input.sessionId))\n  return invalid(\"sessionId must be the current TablePulse visit UUID.\");\n// Never silently assume a discounted POS bill is organic.\nif (typeof input.discount !== \"boolean\")\n  return invalid(\"discount must explicitly be true or false.\");\nif (\n  !Array.isArray(input.items) ||\n  input.items.length < 1 ||\n  input.items.length > 30\n)\n  return invalid(\"Send 1–30 order lines.\");\nif (\n  input.items.some(\n    (i) =>\n      !record(i) ||\n      Object.keys(i).some((k) => ![\"menuItemId\", \"quantity\"].includes(k)) ||\n      typeof i.menuItemId !== \"string\" ||\n      !uuid.test(i.menuItemId) ||\n      !Number.isInteger(i.quantity) ||\n      i.quantity < 1 ||\n      i.quantity > 50,\n  )\n)\n  return invalid(\"Each line requires a menuItemId UUID and quantity of 1–50.\");\nif (\n  input.customerRef !== undefined &&\n  (typeof input.customerRef !== \"string\" ||\n    input.customerRef.trim().length < 3 ||\n    input.customerRef.length > 128)\n)\n  return invalid(\n    \"customerRef must be a verified POS loyalty reference, if provided.\",\n  );\nconst event = {\n  externalId: input.externalId.trim(),\n  sessionId: input.sessionId,\n};\nif (input.customerRef !== undefined)\n  event.customerRef = input.customerRef.trim();\nevent.items = input.items.map((i) => ({\n  menuItemId: i.menuItemId,\n  quantity: i.quantity,\n}));\nevent.discount = input.discount;\n// Serialize once: Crypto and HTTP Request must use this identical string.\nconst rawBody = JSON.stringify(event);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nreturn [\n  { json: { valid: true, externalId: event.externalId, rawBody, timestamp } },\n];\n"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "valid",
+      "name": "Valid event?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-boolean",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "sign",
+      "name": "Sign TablePulse request",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        720,
+        100
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "binaryData": false,
+        "value": "={{ $json.timestamp + '.' + $json.rawBody }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Select a Crypto credential with Hmac Secret equal to TABLEPULSE_WEBHOOK_SECRET on the backend. Keep the secret in credentials, never in this workflow."
+    },
+    {
+      "id": "evaluate",
+      "name": "Record order and evaluate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://tablepulse.example.com/api/offers/evaluate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-tablepulse-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-tablepulse-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "notes": "Replace the fixed URL with your TablePulse backend. This endpoint BOTH records this new order AND evaluates it. Do not call /api/pos/events first. HTTP errors are classified; only transport/parse errors use node retries."
+    },
+    {
+      "id": "classify",
+      "name": "Classify backend result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// n8n HTTP Request includes status + body. No eligibility decisions are made here.\nconst result = $input.first().json;\nconst externalId = $(\"Validate order\").first().json.externalId;\nconst status = Number(result.statusCode);\nconst body = result.body;\nconst output = (statusCode, response) => [{ json: { statusCode, response } }];\nconst failure = (statusCode, code, message, retryable) =>\n  output(statusCode, {\n    ok: false,\n    externalId,\n    error: { code, message, retryable },\n  });\nif (!Number.isInteger(status) || status < 200 || status > 599)\n  return failure(\n    502,\n    \"INVALID_BACKEND_RESPONSE\",\n    \"TablePulse returned an unexpected response.\",\n    true,\n  );\nif (status >= 400) {\n  if (status === 429)\n    return failure(\n      429,\n      \"BACKEND_BUSY\",\n      \"Retry later using the same externalId and order.\",\n      true,\n    );\n  if (status >= 500)\n    return failure(\n      503,\n      \"BACKEND_UNAVAILABLE\",\n      \"Retry later using the same externalId and order.\",\n      true,\n    );\n  if (status === 401 || status === 403)\n    return failure(\n      502,\n      \"INTEGRATION_CONFIGURATION\",\n      \"The TablePulse integration needs operator attention.\",\n      false,\n    );\n  return failure(\n    status,\n    \"ORDER_REJECTED\",\n    \"The order was rejected. Check visit, item mapping, stock and externalId conflicts.\",\n    false,\n  );\n}\nif (status !== 200 || !body || body.ok !== true)\n  return failure(\n    502,\n    \"INVALID_BACKEND_RESPONSE\",\n    \"TablePulse did not confirm the order.\",\n    true,\n  );\nif (body.duplicate === true)\n  return output(200, {\n    ok: true,\n    externalId,\n    outcome: \"duplicate\",\n    orderId: body.orderId,\n  });\nconst decision = body.decision;\nif (\n  !decision ||\n  ![\"shown\", \"withheld\", \"control\"].includes(decision.outcome) ||\n  typeof decision.id !== \"string\" ||\n  !Array.isArray(decision.reasons) ||\n  decision.reasons.some((v) => typeof v !== \"string\") ||\n  (decision.outcome === \"shown\" && typeof decision.offerId !== \"string\")\n)\n  return failure(\n    502,\n    \"INVALID_BACKEND_RESPONSE\",\n    \"TablePulse did not return a valid decision.\",\n    true,\n  );\nreturn output(200, {\n  ok: true,\n  externalId,\n  orderId: body.orderId,\n  outcome: decision.outcome,\n  decisionId: decision.id,\n  ...(decision.offerId ? { offerId: decision.offerId } : {}),\n  ...(typeof decision.score === \"number\" ? { score: decision.score } : {}),\n  ...([\"rules\", \"ai\"].includes(decision.selectionSource)\n    ? { selectionSource: decision.selectionSource }\n    : {}),\n  ...(decision.selectionSource === \"ai\" &&\n  typeof decision.advisorRationale === \"string\"\n    ? { advisorRationale: decision.advisorRationale.slice(0, 180) }\n    : {}),\n  reasons: decision.reasons,\n});\n"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "reply",
+      "name": "Reply to POS",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1460,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "error",
+      "name": "Safe service error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        480
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Do not echo node errors, request headers, signatures or credential details.\nreturn [\n  {\n    json: {\n      statusCode: 503,\n      response: {\n        ok: false,\n        error: {\n          code: \"INTEGRATION_UNAVAILABLE\",\n          message:\n            \"The integration could not confirm processing. Retry later with the same externalId and order.\",\n          retryable: true,\n        },\n      },\n    },\n  },\n];\n"
+      }
+    },
+    {
+      "id": "notes",
+      "name": "Setup and boundaries",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -260
+      ],
+      "parameters": {
+        "width": 650,
+        "height": 300,
+        "content": "## TablePulse · POS to agentic deal decision\n1. Select Header Auth on the webhook and Crypto credentials on the signer.\n2. Set the fixed HTTPS TablePulse URL in the HTTP node.\n3. Send canonical NEW order lines, not the whole cumulative bill.\n4. Same externalId + identical order for retries.\n\nTablePulse owns hard rules, fixed margin goals, the optional AI ranker, database, caps, inventory and screen updates. Shown/withheld/control are all successful processing. The workflow is imported inactive and stores no execution payloads by default. See integrations/n8n/README.md."
+      }
+    }
+  ],
+  "connections": {
+    "POS order webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate order": {
+      "main": [
+        [
+          {
+            "node": "Valid event?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe service error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid event?": {
+      "main": [
+        [
+          {
+            "node": "Sign TablePulse request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply to POS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign TablePulse request": {
+      "main": [
+        [
+          {
+            "node": "Record order and evaluate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe service error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record order and evaluate": {
+      "main": [
+        [
+          {
+            "node": "Classify backend result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe service error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify backend result": {
+      "main": [
+        [
+          {
+            "node": "Reply to POS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe service error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe service error": {
+      "main": [
+        [
+          {
+            "node": "Reply to POS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Singapore",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "pinData": {},
+  "tags": []
+}

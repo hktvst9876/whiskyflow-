@@ -1,0 +1,78 @@
+DB> Postgres up. Migrations applied. Venue "The Sunday Social", 20 menu items, 12 tables, revision 0.
+DB> Settings: min profit S$2.5, min score 65, allocation 78%, control 15%.
+DB> Closed 10 leftover seed visits. Fresh service begins.
+
+=== 1. Alice — new member, signs up on her phone, checks in at T01, orders 2 burgers ===
+   PASS  Alice gets a membership number via SMS sign-in — TP-KYYFWW2EWG
+   PASS  Asking for a 2nd SMS within a minute is rate-limited — Too many attempts. Please try again later.
+   PASS  Signing in again later keeps the same membership — TP-KYYFWW2EWG
+   PASS  Staff confirms Alice's table check-in code — TP-KYYFWW2EWG
+   DB> decision: SHOWN "The perfect pairing" score 79 code 4QER5P
+
+=== 2. Ben & mates — walk-ins, no membership, 4 Tigers at T02 ===
+   DB> decision: WITHHELD: A verified POS customer reference is needed to enforce the customer reward cap
+   PASS  Anonymous table gets no subsidised reward (live identity rule)
+
+=== 3. Chloe — POS loyalty card, ribeye + glass of Shiraz at T03 ===
+   DB> decision: CONTROL: Assigned to the control cohort for this visit
+   PASS  Bottle trade-up is the offer considered for steak + glass
+
+=== 4. POS glitches: replayed event, reused ID, impossible quantity ===
+   PASS  Replayed POS event is accepted once, flagged duplicate — first: 200  second: 200 {"ok":true,"duplicate":true,"orderId":"6c1a4601-083f-4b91-a27b-e0faed2c6cb9"}
+   PASS  Reused event ID with different items is rejected — This event ID was already used for a different order
+   PASS  Ordering more ribeyes than in stock is refused and stock untouched — stock 23
+
+=== 5. Eve's table — not ID-checked yet, orders 2 burgers + 2 pale ales at T05 ===
+   DB> decision: CONTROL: Assigned to the control cohort for this visit
+   PASS  No alcoholic reward shown to an un-ID'd table
+
+=== 6. Alice tries a second table (T06) while her first visit is open ===
+   DB> check-in: confirmed; decision: WITHHELD: Customer already has an active reward at another table
+   PASS  Alice never holds more than one active reward — 1 active
+
+=== 7. Redemption + abuse attempts ===
+   Reward on T01: "The perfect pairing" code 4QER5P
+   PASS  Screenshot of code used at a different table is refused — Code does not belong to this table and bill
+   PASS  Correct table + code redeems
+   PASS  Same code cannot be redeemed twice — Another discount is already on the bill
+   PASS  Redemption consumes stock for the reward item — 48 → 46
+   DB> redemption row: revenue S$14, est. profit S$11.00, discount given S$4.00
+
+   Brute-force: a loyalty guest at T04 guesses codes six times
+     replies: Code does not belong to this table and bill | Too many failed attempts. Ask a manager and retry after five minutes
+   PASS  Guessing is blocked after repeated failures — Too many failed attempts. Ask a manager and retry after five minutes
+
+=== 8. Void and close behaviour ===
+   (no active reward at this moment to void — skipped)
+   PASS  Orders on a closed bill are rejected — This table session is no longer open
+
+=== 9. Busy night — 60 groups, waves of 6 tables ordering at the same moment ===
+   Groups: 60 | shown 10 | withheld 42 | control 2
+   Orders refused because an item sold out (expected late in the night): 6
+   Of shown: redeemed 6, guests ignored 4
+   Writes that gave up under contention ("Service is busy"): 0; DB revision conflicts retried: 146
+   Top reasons for no reward:
+      19 × A verified POS customer reference is needed to enforce the customer reward cap
+      11 × The perfect pairing: basket has no incremental match
+       8 × Customer reached the #-day reward cap
+       3 × Random allocation withheld this reward to keep offers unpredictable
+       2 × Assigned to the control cohort for this visit
+       1 × Customer already has an active reward at another table
+   PASS  No unexpected errors during busy night — 0 errors
+   PASS  Every concurrent order eventually committed — 0 gave up
+
+=== 10. Database integrity audit (direct SQL + snapshot) ===
+   PASS  No reward redeemed twice (SQL)
+   PASS  Never two open visits on one table (SQL)
+   PASS  No negative stock
+   PASS  No customer has two active rewards
+   PASS  At most one reward per visit
+   PASS  30-day cap: no loyalty customer redeemed more than one subsidised reward tonight — 7 customers redeemed
+   PASS  Every 'shown' decision has a stored reward
+   PASS  No reward issued tonight to an unverified customer — 0
+   PASS  No live alcohol reward on an un-ID'd/intoxicated table
+   PASS  Every redemption kept at least the S$2.5 profit floor
+
+DB> Night totals: organic sales S$5392.00 · reward sales 7 = S$57.90 revenue, S$41.20 est. GP, S$28.10 discount given · final revision 345 · 1034 DB calls
+
+RESULT: 29/29 checks passed

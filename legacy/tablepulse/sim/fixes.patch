@@ -1,0 +1,78 @@
+--- a/lib/server/commands.ts
++++ b/lib/server/commands.ts
+@@ -120,7 +120,8 @@
+     if (
+       existing.sessionId !== event.sessionId ||
+       existing.discount !== event.discount ||
+-      JSON.stringify(existing.items) !== JSON.stringify(event.items)
++      JSON.stringify(existing.items.map((i) => [i.menuItemId, i.quantity])) !==
++        JSON.stringify(event.items.map((i) => [i.menuItemId, i.quantity]))
+     )
+       throw new HttpError(
+         409,
+--- a/lib/server/store.ts
++++ b/lib/server/store.ts
+@@ -54,7 +54,7 @@
+     globalStore.tablepulseQueue = operation.catch(() => {});
+     return operation;
+   }
+-  for (let attempt = 0; attempt < 5; attempt++) {
++  for (let attempt = 0; attempt < 8; attempt++) {
+     const state = await readState();
+     const result = await fn(state);
+     const { error } = await adminClient().rpc("tablepulse_commit", {
+@@ -64,6 +64,8 @@
+     });
+     if (!error) return result;
+     if (error.code !== "40001") throw new Error(error.message);
++    // Jittered backoff so simultaneous tables do not keep colliding.
++    await new Promise((r) => setTimeout(r, Math.random() * 25 * 2 ** attempt));
+   }
+   throw new Error("Service is busy. Please retry.");
+ }
+--- /dev/null
++++ b/supabase/migrations/202610090001_commit_revision_first.sql
+@@ -0,0 +1,43 @@
++-- Check the optimistic revision before identity guards, so concurrent writers get a retryable 40001.
++create or replace function public.tablepulse_commit(p_venue uuid,p_revision bigint,p_state jsonb) returns bigint language plpgsql security definer set search_path=public as $$
++declare x jsonb; old_data jsonb; next_revision bigint; current_revision bigint;
++begin
++ select revision into current_revision from venues where id=p_venue for update;
++ -- Reject stale snapshots first so writers retry instead of tripping the immutability guards below.
++ if current_revision is distinct from p_revision then raise exception 'Concurrent venue update' using errcode='40001'; end if;
++ for x in select value from jsonb_array_elements(p_state->'customers') loop
++  select data into old_data from customers where id=(x->>'id')::uuid and venue_id=p_venue;
++  if old_data->>'authUserId' is not null and x->>'authUserId' is distinct from old_data->>'authUserId' then raise exception 'Member identity is immutable'; end if;
++  if old_data->>'membershipId' is not null and x->>'membershipId' is distinct from old_data->>'membershipId' then raise exception 'Membership number is immutable'; end if;
++ end loop;
++ for x in select value from jsonb_array_elements(p_state->'sessions') loop
++  select data into old_data from table_sessions where id=(x->>'id')::uuid and venue_id=p_venue;
++  if old_data->>'rewardAttemptedAt' is not null and x->>'rewardAttemptedAt' is distinct from old_data->>'rewardAttemptedAt' then raise exception 'Cannot reset reward opportunity'; end if;
++  if coalesce((old_data->>'customerVerified')::boolean,false) and x->>'customerId' is distinct from old_data->>'customerId' then raise exception 'Cannot replace verified visit recipient'; end if;
++ end loop;
++ if exists (
++  select s->>'customerId' from jsonb_array_elements(p_state->'instances') i
++  join jsonb_array_elements(p_state->'sessions') s on s->>'id'=i->>'sessionId'
++  where i->>'status'='active' and (i->>'expiresAt')::timestamptz>now() and s->>'customerId' is not null
++  group by s->>'customerId' having count(*)>1
++ ) then raise exception 'Customer already has an active reward'; end if;
++ next_revision:=public.tablepulse_commit_v1(p_venue,p_revision,p_state);
++ for x in select value from jsonb_array_elements(p_state->'customers') loop
++  if x->>'consentVersion' is not null then
++   update customer_consents set purpose='history_based_personalisation',version=x->>'consentVersion' where customer_id=(x->>'id')::uuid and venue_id=p_venue;
++  end if;
++ end loop;
++ for x in select value from jsonb_array_elements(coalesce(p_state->'memberCheckins','[]'::jsonb)) loop
++  select data into old_data from member_checkins where id=(x->>'id')::uuid;
++  if old_data is not null and (
++   old_data->>'customerId' is distinct from x->>'customerId' or old_data->>'sessionId' is distinct from x->>'sessionId' or
++   old_data->>'codeHash' is distinct from x->>'codeHash' or old_data->>'expiresAt' is distinct from x->>'expiresAt' or
++   (old_data->>'consumedAt' is not null and old_data->>'consumedAt' is distinct from x->>'consumedAt')
++  ) then raise exception 'Check-in identity and token are immutable'; end if;
++  if not exists(select 1 from customers where id=(x->>'customerId')::uuid and venue_id=p_venue and auth_user_id is not null) then raise exception 'Check-in requires member'; end if;
++  insert into member_checkins(id,venue_id,customer_id,session_id,data) values((x->>'id')::uuid,p_venue,(x->>'customerId')::uuid,(x->>'sessionId')::uuid,x)
++   on conflict(id) do update set data=excluded.data;
++ end loop;
++ delete from member_checkins where venue_id=p_venue and (data->>'expiresAt')::timestamptz<now()-interval '1 day';
++ return next_revision;
++end $$;
