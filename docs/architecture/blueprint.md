@@ -187,21 +187,25 @@ Money columns end in `_cents` (integer). Status/enum columns are `text` with a T
 
 ### Catalog & anchors
 - **catalog_items**: merchant_id, name, category (text key from vertical preset or custom),
-  kind (`product|service`), price_cents, cost_cents, active, anchorable, tags text[],
+  kind (`product|service`), price_cents, cost_cents, active, anchorable, tags text[], sku null
+  (unique per merchant; POS matching),
   description, sort_order, created_at, updated_at.
 - **anchor_programs**: merchant_id, name, status (`active|paused|archived`), issue_mode
   (`upgrade_offer|stored_purchase`), unit_type (`item|percent|session`), unit_label,
   unit_label_plural, units_granted int, coverage jsonb (`{kind:'category', category,
   maxCoveredPriceCents?}` | `{kind:'items', itemIds}`), trigger jsonb (`{minBasketCents?,
-  requiredCategoryCounts?, requiredItemIds?, minPartySize?}`), pricing jsonb (`{minPricePct,
-  maxPricePct}` of covered retail), validity_days, redemption jsonb (`{allowedWeekdays?,
-  offPeakOnly?, requiresNewPurchase?, minNewSpendCents?}`), transferable, refund_policy
+  requiredCategoryCounts?, requiredItemIds?, minPartySize?}`), pricing jsonb (`{minPriceRate,
+  maxPriceRate}` — fractions of covered retail, 0.25 = 25%), validity_days, redemption jsonb
+  (`{allowedWeekdays?, offPeakOnly?, requiresNewPurchase?, minNewSpendCents?,
+  maxUnitsPerVisit?}`), transferable, refund_policy
   (`none|unused_within_14_days|unused_any_time`), upgrade_allowed, terms text, created_at, updated_at.
 - **entitlements** (a Return Anchor owned by a customer): merchant_id, customer_id null
-  (until claimed), program_id null, origin_visit_id null, item_id null, display_name,
+  (until claimed), program_id null, origin_visit_id null, item_id null, issue_mode
+  (`upgrade_offer|stored_purchase`), display_name,
   unit_type, unit_label, unit_label_plural, quantity_initial int, quantity_remaining int
   (`>= 0` check), covered_category null, max_covered_price_cents null, unit_retail_cents,
-  unit_cost_cents (for `percent` these are the values of 100%), price_paid_cents,
+  unit_cost_cents (for `percent` these are the values of 100%; for a kept package such as a
+  $50 bucket of 5 they are per unit, $10), price_paid_cents,
   storage_location null, expires_at null, transferable, terms_snapshot jsonb (frozen at
   issue), status (`pending_claim|active|fully_redeemed|expired|voided|refunded`),
   claim_token_hash unique null, claim_expires_at null, issued_by_user_id null, created_at,
@@ -215,6 +219,7 @@ Money columns end in `_cents` (integer). Status/enum columns are `text` with a T
 - **customers**: merchant_id, phone_e164 null (unique per merchant when not null),
   display_name, redeem_code (unique per merchant), status (`active|anonymised`),
   first_visit_at, last_visit_at, visit_count, total_spend_cents, total_gp_cents,
+  promo_visit_count, typical_gap_days null,
   avg_party_size_x10 (int, ×10), preferred_weekday null (0-6), preferred_hour null,
   whatsapp_service_opt_in bool, whatsapp_marketing_opt_in bool, opted_out_at null,
   return_probability_bp (0-10000 basis points) null, return_band (`high|medium|at_risk`) null,
@@ -245,12 +250,12 @@ Money columns end in `_cents` (integer). Status/enum columns are `text` with a T
 - **offer_exposures**: merchant_id, decision_id null, visit_id null, customer_id null,
   campaign_id null, message_id null, entitlement_id null, offer_type, channel
   (`pos|whatsapp|wallet|staff_upsell`), is_discount, payload jsonb, expected jsonb,
-  status (`shown|accepted|declined|expired|redeemed`), promo_cost_cents, value_cents,
-  shown_at, responded_at null.
-- **experiments**: merchant_id, key, name, holdout_pct, status (`running|stopped`), salt,
+  offer_definition_id null, status (`shown|accepted|declined|expired|redeemed`),
+  promo_cost_cents, value_cents, shown_at, responded_at null, expires_at null.
+- **experiments**: merchant_id, key, name, holdout_bp (basis points), status (`running|stopped`), salt,
   started_at, stopped_at null; unique(merchant_id, key).
 - **experiment_assignments**: merchant_id, experiment_id, unit_type (`customer|visit`),
-  unit_id, arm, assigned_at; unique(experiment_id, unit_type, unit_id).
+  unit_id, arm, customer_id null, visit_id null, assigned_at; unique(experiment_id, unit_type, unit_id).
 
 ### Messaging, campaigns, fraud
 - **messages**: merchant_id, customer_id null, direction (`outbound|inbound`), channel
@@ -260,7 +265,7 @@ Money columns end in `_cents` (integer). Status/enum columns are `text` with a T
   dedupe_key (unique per merchant, null allowed), entitlement_id null, campaign_id null,
   offer_exposure_id null, est_cost_cents, created_at, updated_at.
 - **campaigns**: merchant_id, kind, name, segment, offer_definition_id null, status
-  (`draft|scheduled|sending|completed|cancelled`), holdout_pct, audience_count,
+  (`draft|scheduled|sending|completed|cancelled`), holdout_bp, audience_count,
   expected_cost_cents, expected_return_cents, scheduled_for, created_by, created_at.
 - **campaign_recipients**: merchant_id, campaign_id, customer_id, arm, message_id null,
   created_at; unique(campaign_id, customer_id).
@@ -276,6 +281,25 @@ calls module repos/services and pure logic. These map 1:1 to the MVP steps.
 
 | Flow file | Steps | What it does |
 |---|---|---|
+| `context.ts` | — | `FlowContext { merchantId, actor, now }`, blackout helper, public URLs |
+| `onboarding.ts` | 1 | `createMerchantFromPreset` (menu with price + cost, programs, offers, experiment), `createOfferFromConfig` |
+| `visits.ts` | 2, 12-13 | POS-lite: `openVisit`, `addItem`, `voidLine` (keeps the ledger consistent), `findCustomer`, `attachCustomer`, `createCustomerAtTill`, `visitView`, `applyCustomerPromo` |
+| `checkout-offer.ts` | 3-5, 18 | `evaluateCheckoutOffer(db, ctx, visitId)`: basket, catalog, programs, customer snapshot, settings → `evaluateDeals()` → guardrails → holdout (eligible opportunities only) → **one** decision per visit (no reroll) → exposure if offered |
+| `issue-anchor.ts` | 6 | `acceptOffer` → `anchor_upgrade` line + entitlement (`pending_claim` or `active`) + claim token; `declineOffer`; `keepStoredPurchase` (bottle/bucket/package keep) |
+| `claim-anchor.ts` | 7-9 | `getClaimView`, `claimByToken` (rate-limited), `claimByStaff`: resolve/create customer, per-purpose consents, activate, wallet token, confirmation sent immediately |
+| `messages.ts` | 9-11 | Outbox: `scheduleMessage`, `planAnchorMessages`, `chooseMessageOffer`, `dispatchDueMessages` / `sendMessageNow` through the send-time policy (guardrails kind `message`) |
+| `scheduler.ts` | 10-11 | `runSchedulerTick(db, now)`: expire anchors and promos, plan win-back/bottle-low/renewal (once per anchor), dispatch, rescore stale customers, fraud scan, refresh measured uplift |
+| `redemption.ts` | 14-16 | `redeemEntitlement` (row lock, ledger, premium upgrade difference, per-visit limit, receipt), `recordBottleLevel`, `getUpsellForVisit`, `addUpsell` |
+| `close-visit.ts` | 17 | `closeVisit`: requires-new-purchase check, finalise, refresh aggregates + score, headline of what the visit earned |
+| `campaigns.ts` | — | `suggestedCampaigns`, `launchCampaign` (holdout, per-recipient guardrails, messages) |
+| `inbound-message.ts` | — | `handleInboundText` (STOP/START/BALANCE, idempotent), `handleStatusUpdate` |
+| `pos-ingest.ts` | 2 (alt) | Canonical POS order → upsert visit + lines idempotently → optional offer evaluation |
+| `scoring.ts` | — | Score features from stored facts, `customerSnapshot`, `refreshCustomer`, `rescoreStale` |
+| `demo.ts` | — | Deterministic simulated history for the four demo merchants |
+
+Console read models live in `src/modules/analytics/queries.ts`. See `src/flows/README.md`.
+
+---|---|---|
 | `checkout-offer.ts` | 2-5 | `evaluateCheckoutOffer(ctx, visitId)`: load basket, catalog, programs, customer snapshot, settings → `deals.evaluate()` → guardrails → experiment assignment → persist **one** decision per visit (no reroll) → exposure if offered |
 | `issue-anchor.ts` | 6 | `acceptOffer` → add `anchor_upgrade` line + issue entitlement (`pending_claim` or `active` if customer known) + claim token; `declineOffer`; `keepStoredPurchase` (bottle keep) |
 | `claim-anchor.ts` | 7-9 | `claimByToken(token, phone, consents)` and `claimByStaff(...)`: resolve/create customer, record consents, activate entitlement, create wallet token, schedule confirmation message |
@@ -296,8 +320,8 @@ For each active `upgrade_offer` program whose trigger matches the basket:
    `category` coverage → `min(maxCoveredPriceCents ?? +∞, max price in category)` and the
    **highest cost** among eligible items at or below that price (conservative).
    `coveredRetail = units × unitRetail`, `coveredCost = units × unitCost` (= `C`).
-2. Price ladder: for each pct in `settings.dealEngine.priceLadderPct` within
-   `[pricing.minPricePct, pricing.maxPricePct]`, `U = roundUp(coveredRetail × pct, roundingCents)`.
+2. Price ladder: for each rate in `settings.dealEngine.priceLadderRates` within
+   `[pricing.minPriceRate, pricing.maxPriceRate]`, `U = roundUp(coveredRetail × rate, roundingCents)`.
 3. Customer baseline return probability `p0` (Return Score computed **without** any
    anchor; unknown customer → merchant/vertical new-customer prior). Uplift prior
    `uplift = maxUplift × 4 × p0 × (1 − p0)` (persuadables in the middle gain most),
@@ -310,20 +334,25 @@ For each active `upgrade_offer` program whose trigger matches the basket:
 6. Acceptance: `pAccept = baseAccept[segment] × sigmoid((depth − d0)/k)` where
    `depth = 1 − U / coveredRetail`.
 7. Hard constraints per price point: `ΔE ≥ minExpectedContributionCents`;
-   today margin `(basketRev + U − basketCost − C)/(basketRev + U) ≥ minTodayMarginPct`;
-   `depth ≤ maxImpliedDiscountPct`; `coveredRetail ≤ anchorValueCapPct × expectedNextVisitSpend`.
+   today margin `(basketRev + U − basketCost − C)/(basketRev + U) ≥ minTodayMarginRate`;
+   `depth ≤ maxImpliedDiscountRate`; `perVisitCovered ≤ anchorValueCapRate × expectedNextVisitSpend`
+   where `perVisitCovered = unitRetail × min(units, redemption.maxUnitsPerVisit)` — the anchor
+   may pay for part of ONE return visit, never the whole of it (service verticals, where the
+   session is the visit, raise the cap in their preset; see `docs/product/decisions.md`).
 8. Pick the price point maximising `pAccept × ΔE`; rank programs by that value. Return all
    evaluated candidates with reasons (for the decision log) and the best one (or none).
 
 ### 7.2 Guardrails (`src/modules/guardrails`)
-`evaluateGuardrails(input, rules, settings) → { allowed, results[] }`. One file per rule in
+`evaluateGuardrails(input, settings, rules = GUARDRAIL_RULES) → { allowed, deferUntil, results[], blockedBy[] }`. One file per rule in
 `rules/`, registered in `rules/index.ts`. Critical rules cannot be disabled. Initial rules:
 `no-stacking`, `min-contribution`, `min-today-margin`, `max-discount-depth`,
 `anchor-value-cap`, `cooldown-after-offer`, `promo-cost-cap`, `discount-frequency`,
 `regulars-no-discount`, `price-sensitive-frequency`, `no-inactivity-escalation`,
 `win-back-limit`, `vary-offer-type`, `max-active-anchors`, `liability-cap`,
 `blackout-period`, plus messaging rules `consent-required`, `quiet-hours`,
-`message-frequency-cap`, `recently-visited`. Selection policy `prefer-non-discount`
+`message-frequency-cap` (defers, never drops), `recently-visited`, `entitlement-still-active`.
+Deferring rules (quiet hours, frequency caps) return `deferUntil`; the dispatcher reschedules.
+Selection policy `prefer-non-discount`
 lives in `offers/select.ts`.
 
 ### 7.3 Return Score (`src/modules/scoring`)
@@ -371,8 +400,9 @@ definitions. Return top N with a staff script and expected GP.
 `src/modules/merchants/settings.ts` exports `merchantSettingsSchema` with defaults from
 `src/config/defaults.ts` and vertical presets. Stored in `merchants.settings` as overrides;
 always read through `parseSettings()`. Sections: `dealEngine`, `guardrails`, `experiment`,
-`messaging`, `business` (hours, off-peak windows, blackouts, booking URL), `anchors`
-(defaults), `demo`.
+`messaging`, `business` (booking URL, off-peak windows, blackouts), `anchors` (defaults).
+Rates are fractions named `…Rate` (0.45 = 45%). The demo clock lives in `app_state`
+(`src/server/clock.ts`).
 
 ---
 
@@ -383,8 +413,10 @@ always read through `parseSettings()`. Sections: `dealEngine`, `guardrails`, `ex
 - **Errors**: throw `AppError` subclasses from `@/core/errors` (`NotFoundError`,
   `ForbiddenError`, `ValidationError`, `ConflictError`, `RateLimitError`). Actions return
   `ActionResult<T>` (`{ ok: true, data } | { ok: false, error, fieldErrors? }`) via
-  `runAction()`; route handlers map `AppError.status`.
-- **Time**: pure functions take `now: Date`. Server code gets it from `getNow()` (demo clock aware).
+  `runAction()` in `src/server/action.ts`; route handlers use `errorResponse()` from the same file.
+- **Time**: pure functions take `now: Date`. Server code gets it from `getNow(db)` (demo clock
+  aware); flows receive it as `ctx.now`.
+- **Next.js 16**: see `docs/architecture/nextjs-16-conventions.md`.
 - **Auth**: every server action, query and route calls `requireAuth(minRole)` (or verifies
   a token/API key) itself; layouts are not a security boundary.
 - **Transactions**: flows wrap multi-write steps in `db.transaction`. Ledger changes lock
