@@ -32,7 +32,7 @@ export const spa: VerticalPreset = {
       trigger: { requiredCategoryCounts: { massage: 1 } },
       pricing: { minPriceRate: 0.4, maxPriceRate: 0.65 },
       validityDays: 90,
-      redemption: {},
+      redemption: { maxUnitsPerVisit: 1 },
       transferable: true,
       refundPolicy: "unused_within_14_days",
       upgradeAllowed: true,
@@ -49,7 +49,7 @@ export const spa: VerticalPreset = {
       trigger: {},
       pricing: { minPriceRate: 0, maxPriceRate: 0 },
       validityDays: 180,
-      redemption: {},
+      redemption: { maxUnitsPerVisit: 1 },
       transferable: true,
       refundPolicy: "unused_any_time",
       upgradeAllowed: true,
@@ -60,14 +60,21 @@ export const spa: VerticalPreset = {
     { offerType: "off_peak_perk", name: "Weekday: complimentary aromatherapy", config: { perkItemKey: "aroma" } },
     { offerType: "renewal_bonus", name: "Renew: complimentary hot stones", config: { perkItemKey: "stones" } },
     { offerType: "premium_upgrade", name: "Upgrade to 90 minutes", config: { itemKeys: ["massage-90"] } },
-    { offerType: "win_back_perk", name: "Comeback: complimentary foot scrub", config: { perkItemKey: "aroma" } },
+    { offerType: "win_back_perk", name: "Comeback: complimentary aromatherapy oils", config: { perkItemKey: "aroma" } },
   ],
   complements: {
     massage: { addon: 1, facial: 0.6, package: 0.5, massage: 0.3 },
     facial: { addon: 0.9, massage: 0.6 },
     "*": { addon: 0.8, facial: 0.4 },
   },
-  settings: { messaging: { reminderFraction: 0.7, reminderMaxDays: 21, sendHour: 11 }, anchors: { defaultValidityDays: 90 } },
+  // Services: the stored session IS the main service of the return visit, so the cap is
+  // set to one whole session; the profit of that visit comes from add-ons and renewal,
+  // and the minimum expected contribution still has to clear (docs/product/decisions.md).
+  settings: {
+    messaging: { reminderFraction: 0.7, reminderMaxDays: 21, sendHour: 11 },
+    anchors: { defaultValidityDays: 90 },
+    guardrails: { anchorValueCapRate: 1 },
+  },
   demo: {
     merchantName: "Serenity Spa",
     slug: "serenity-spa",

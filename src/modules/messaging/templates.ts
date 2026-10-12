@@ -113,7 +113,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
     category: "service_reply",
     metaName: "",
     variables: ["merchant"],
-    body: "Done — you won't get offers from {{merchant}} any more. Your balance is safe in your wallet. Reply START to opt back in.",
+    body: "Done — you won't get messages from {{merchant}} any more. What you own is safe in your wallet. Reply START to opt back in.",
     buttons: [],
     isReminder: false,
   },

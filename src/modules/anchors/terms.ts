@@ -66,6 +66,7 @@ export function transparencyLines(
     restrictions.push(`${r.allowedWeekdays.map((d) => WEEKDAY_SHORT[d]).join(", ")} only`);
   }
   if (r.offPeakOnly) restrictions.push("off-peak hours only");
+  if (r.maxUnitsPerVisit) restrictions.push(`up to ${r.maxUnitsPerVisit} per visit`);
   if (r.requiresNewPurchase) {
     restrictions.push(
       r.minNewSpendCents

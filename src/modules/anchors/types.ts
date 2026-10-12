@@ -51,6 +51,8 @@ export interface AnchorRedemptionRules {
   /** Redemption visit must include at least one new purchase. */
   requiresNewPurchase?: boolean;
   minNewSpendCents?: number;
+  /** Most units one visit may use (one class per visit). Undefined = no limit. */
+  maxUnitsPerVisit?: number;
 }
 
 export type RefundPolicy = "none" | "unused_within_14_days" | "unused_any_time";

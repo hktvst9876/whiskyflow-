@@ -54,7 +54,16 @@ const result = spawnSync(
     "--test-concurrency=4",
     ...files.map((f) => relative(root, f)),
   ],
-  { stdio: "inherit", env: { ...process.env, NODE_ENV: "test", LOG_LEVEL: process.env.LOG_LEVEL ?? "warn" } },
+  { stdio: "inherit", env: {
+      ...process.env,
+      NODE_ENV: "test",
+      LOG_LEVEL: process.env.LOG_LEVEL ?? "warn",
+      // Never let a test open the on-disk dev database.
+      PGLITE_DATA_DIR: "memory://",
+      DATABASE_URL: "",
+      WHATSAPP_PROVIDER: "demo",
+    },
+  },
 );
 
 process.exit(result.status ?? 1);

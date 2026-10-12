@@ -2,16 +2,23 @@ import { isWithinLocalWindow, localParts, parseHHMM, zonedDateTime } from "@/cor
 import type { GuardrailRule } from "../types";
 import { pass, skip } from "./helpers";
 
+/**
+ * Templates the customer triggers themselves at the counter (claiming an anchor, using
+ * one). A bar guest who claims at 23:00 expects the confirmation now, not tomorrow.
+ */
+const CUSTOMER_INITIATED = new Set(["anchor_confirmation", "redemption_receipt"]);
+
 /** Messages never arrive at night; due messages wait until quiet hours end. */
 export const quietHours: GuardrailRule = {
   key: "quiet-hours",
   label: "Quiet hours",
-  description: "No messages during the merchant's quiet hours; they are delayed, not dropped.",
+  description: "No reminders or offers during the merchant's quiet hours; they are delayed, not dropped. Confirmations of something the customer just did are sent immediately.",
   critical: true,
   appliesTo: ["message"],
   check(input, settings) {
     const m = input.message;
     if (!m || m.category === "service_reply") return skip();
+    if (m.templateKey && CUSTOMER_INITIATED.has(m.templateKey)) return skip("Customer-initiated confirmation");
     const { quietHoursStart, quietHoursEnd } = settings.messaging;
     if (!isWithinLocalWindow(input.now, m.timeZone, quietHoursStart, quietHoursEnd)) return pass();
     const local = localParts(input.now, m.timeZone);

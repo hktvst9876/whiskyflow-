@@ -154,11 +154,20 @@ describe("evaluateGuardrails — message dispatch", () => {
   it("defers (not drops) messages during quiet hours", () => {
     const night = new Date("2026-10-12T15:30:00Z"); // 23:30 SGT
     const result = evaluateGuardrails(
-      { now: night, kind: "message", message: { templateKey: "anchor_confirmation", category: "utility", isReminder: false, entitlementActive: true, timeZone: "Asia/Singapore", recipient } },
+      { now: night, kind: "message", message: { templateKey: "anchor_expiry_warning", category: "utility", isReminder: true, entitlementActive: true, timeZone: "Asia/Singapore", recipient } },
       settings,
     );
     assert.equal(result.allowed, false);
     assert.equal(result.deferUntil?.toISOString(), "2026-10-13T01:00:00.000Z"); // 09:00 SGT next day
+  });
+
+  it("sends the claim confirmation immediately even at night (the guest just claimed it)", () => {
+    const night = new Date("2026-10-12T15:30:00Z"); // 23:30 SGT, a bar guest at the counter
+    const result = evaluateGuardrails(
+      { now: night, kind: "message", message: { templateKey: "anchor_confirmation", category: "utility", isReminder: false, entitlementActive: true, timeZone: "Asia/Singapore", recipient } },
+      settings,
+    );
+    assert.equal(result.allowed, true);
   });
 
   it("drops reminders about anchors that are no longer active", () => {

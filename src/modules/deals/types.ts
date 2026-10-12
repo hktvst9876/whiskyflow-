@@ -76,6 +76,8 @@ export interface DealCandidate {
   unitRetailCents: number;
   unitCostCents: number;
   coveredRetailCents: number;
+  /** Retail value one return visit can redeem (units capped by maxUnitsPerVisit). */
+  perVisitCoveredRetailCents: number;
   coveredCostCents: number;
   /** U — what the customer pays today for the anchor. */
   priceCents: number;

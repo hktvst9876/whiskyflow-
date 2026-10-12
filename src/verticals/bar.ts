@@ -74,7 +74,12 @@ export const bar: VerticalPreset = {
     cocktail: { finger_food: 0.8, cocktail: 0.6 },
     "*": { finger_food: 0.7, mixer: 0.4, cocktail: 0.5 },
   },
-  settings: { messaging: { winBackAfterDays: 35, sendHour: 18 }, anchors: { defaultValidityDays: 90 } },
+  settings: {
+    messaging: { winBackAfterDays: 35, sendHour: 18 },
+    anchors: { defaultValidityDays: 90 },
+    // Two cocktails are usually shared on one visit; bar visits run well above that.
+    guardrails: { anchorValueCapRate: 0.7 },
+  },
   demo: {
     merchantName: "The Copper Still",
     slug: "copper-still",

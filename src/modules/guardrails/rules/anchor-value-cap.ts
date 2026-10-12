@@ -12,6 +12,7 @@ export const anchorValueCap: GuardrailRule = {
     const deal = input.offer?.deal;
     if (!deal) return skip();
     const cap = settings.guardrails.anchorValueCapRate * deal.expectedNextVisitSpendCents;
-    return deal.coveredRetailCents <= cap ? pass() : fail("Anchor would pay for too much of the next visit");
+    const perVisit = deal.perVisitCoveredRetailCents ?? deal.coveredRetailCents;
+    return perVisit <= cap ? pass() : fail("Anchor would pay for too much of the next visit");
   },
 };

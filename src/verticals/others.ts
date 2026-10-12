@@ -32,7 +32,7 @@ export const cafe: VerticalPreset = {
       trigger: { requiredCategoryCounts: { coffee: 2 } },
       pricing: { minPriceRate: 0.4, maxPriceRate: 0.7 },
       validityDays: 30,
-      redemption: {},
+      redemption: { maxUnitsPerVisit: 1 },
       transferable: true,
       refundPolicy: "none",
       upgradeAllowed: false,
@@ -79,7 +79,7 @@ export const salon: VerticalPreset = {
       terms: "One bond repair treatment within 75 days.",
     },
   ],
-  offers: [{ offerType: "off_peak_perk", name: "Weekday: complimentary mask sample", config: { perkItemKey: "mask" } }],
+  offers: [{ offerType: "off_peak_perk", name: "Weekday: complimentary hair mask", config: { perkItemKey: "mask" } }],
   complements: { treatment: { haircut: 0.9, retail: 0.6, colour: 0.4 }, "*": { treatment: 0.6, retail: 0.5 } },
   settings: { messaging: { reminderFraction: 0.8, reminderMaxDays: 28 } },
 };
@@ -110,16 +110,21 @@ export const fitness: VerticalPreset = {
       trigger: { requiredCategoryCounts: { class: 1 } },
       pricing: { minPriceRate: 0.5, maxPriceRate: 0.75 },
       validityDays: 45,
-      redemption: {},
+      redemption: { maxUnitsPerVisit: 1 },
       transferable: false,
       refundPolicy: "unused_within_14_days",
       upgradeAllowed: false,
-      terms: "Three classes within 45 days.",
+      terms: "Three classes within 45 days, one per visit.",
     },
   ],
   offers: [{ offerType: "renewal_bonus", name: "Renew: free protein shake", config: { perkItemKey: "shake" } }],
   complements: { class: { shop: 0.7, pt: 0.4, class: 0.5 }, "*": { shop: 0.5 } },
-  settings: { messaging: { reminderMinDays: 3, reminderMaxDays: 7, sendHour: 7, quietHoursEnd: "06:30" } },
+  // A class pack is used one class per visit; the class is the visit, so the cap allows
+  // one whole class and the profit comes from renewals and the shop.
+  settings: {
+    messaging: { reminderMinDays: 3, reminderMaxDays: 7, sendHour: 7, quietHoursEnd: "06:30" },
+    guardrails: { anchorValueCapRate: 1 },
+  },
 };
 
 export const carCare: VerticalPreset = {

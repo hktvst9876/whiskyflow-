@@ -164,6 +164,7 @@ export function evaluateDeals(input: DealInput, currency = "SGD", locale = "en-S
       unitRetailCents: unit?.unitRetailCents ?? 0,
       unitCostCents: unit?.unitCostCents ?? 0,
       coveredRetailCents: 0,
+      perVisitCoveredRetailCents: 0,
       coveredCostCents: 0,
       priceCents: 0,
       priceRate: 0,
@@ -209,7 +210,12 @@ export function evaluateDeals(input: DealInput, currency = "SGD", locale = "en-S
 
     let best: DealCandidate | null = null;
     const failureCounts = new Map<string, number>();
-    const anchorCapFails = coveredRetail > gr.anchorValueCapRate * expectedNextVisitSpend;
+    // The cap is about ONE return visit: a 3-class pack used one class per visit pays for
+    // at most one class of that visit, so compare the value redeemable per visit.
+    const perVisitUnits =
+      program.unitType === "percent" ? 1 : Math.min(program.unitsGranted, program.redemption.maxUnitsPerVisit ?? program.unitsGranted);
+    const perVisitCovered = perVisitUnits * unit.unitRetailCents;
+    const anchorCapFails = perVisitCovered > gr.anchorValueCapRate * expectedNextVisitSpend;
     for (const point of ladder) {
       const U = point.priceCents;
       const depth = 1 - U / coveredRetail;
@@ -228,6 +234,7 @@ export function evaluateDeals(input: DealInput, currency = "SGD", locale = "en-S
         best = {
           ...base,
           coveredRetailCents: coveredRetail,
+          perVisitCoveredRetailCents: perVisitCovered,
           coveredCostCents: C,
           priceCents: U,
           priceRate: point.priceRate,

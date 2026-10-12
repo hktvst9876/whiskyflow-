@@ -24,6 +24,8 @@ export interface GuardrailInput {
       todayMarginRate: number;
       depth: number;
       coveredRetailCents: number;
+      /** Value one return visit can redeem; defaults to coveredRetailCents. */
+      perVisitCoveredRetailCents?: number;
       expectedNextVisitSpendCents: number;
     } | null;
   };
