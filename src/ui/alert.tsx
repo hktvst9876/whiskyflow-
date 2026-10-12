@@ -1,4 +1,10 @@
-import { CircleAlert, CircleCheck, Info, Lightbulb, TriangleAlert } from "lucide-react";
+import {
+  CircleAlert,
+  CircleCheck,
+  Info,
+  Lightbulb,
+  TriangleAlert,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { cn, toneSoft, type Tone } from "./cn";
 
@@ -26,14 +32,41 @@ export interface AlertProps {
  * Inline message box. Danger/warning alerts are announced to screen readers (role="alert");
  * the others are polite status messages.
  */
-export function Alert({ tone = "info", title, icon, actions, className, children }: AlertProps) {
+export function Alert({
+  tone = "info",
+  title,
+  icon,
+  actions,
+  className,
+  children,
+}: AlertProps) {
   const role = tone === "danger" || tone === "warning" ? "alert" : "status";
   return (
-    <div role={role} className={cn("flex gap-3 rounded-lg border px-4 py-3 text-sm", toneSoft[tone], className)}>
-      {icon !== null && <span className="mt-px shrink-0 [&_svg]:size-[18px]">{icon ?? icons[tone]}</span>}
+    <div
+      role={role}
+      className={cn(
+        "flex gap-3 rounded-lg border px-4 py-3 text-sm",
+        toneSoft[tone],
+        className,
+      )}
+    >
+      {icon !== null && (
+        <span className="mt-px shrink-0 [&_svg]:size-[18px]">
+          {icon ?? icons[tone]}
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         {title && <p className="font-semibold">{title}</p>}
-        {children && <div className={cn(title && "mt-0.5", "[&_a]:font-medium [&_a]:underline")}>{children}</div>}
+        {children && (
+          <div
+            className={cn(
+              Boolean(title) ? "mt-0.5" : undefined,
+              "[&_a]:font-medium [&_a]:underline",
+            )}
+          >
+            {children}
+          </div>
+        )}
         {actions && <div className="mt-3 flex flex-wrap gap-2">{actions}</div>}
       </div>
     </div>

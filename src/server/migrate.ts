@@ -8,9 +8,15 @@ import type { Db } from "./db";
  * the project root for `next dev/start`, scripts and tests. Override with MIGRATIONS_DIR.
  */
 export function migrationsFolder(): string {
-  const folder = resolve(process.env.MIGRATIONS_DIR ?? join(process.cwd(), "drizzle"));
+  // The override is an intentional deployment escape hatch; do not make Turbopack trace
+  // the whole repository when it cannot know the value at build time.
+  const folder = process.env.MIGRATIONS_DIR
+    ? resolve(/* turbopackIgnore: true */ process.env.MIGRATIONS_DIR)
+    : join(process.cwd(), "drizzle");
   if (!existsSync(join(folder, "meta", "_journal.json"))) {
-    throw new Error(`Cannot find migrations in ${folder}. Run commands from the project root.`);
+    throw new Error(
+      `Cannot find migrations in ${folder}. Run commands from the project root.`,
+    );
   }
   return folder;
 }

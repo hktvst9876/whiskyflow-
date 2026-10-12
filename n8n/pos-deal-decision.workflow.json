@@ -1,0 +1,95 @@
+{
+  "name": "Return Anchor — POS Deal Decision",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "return-anchor-pos-order",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a11230fa-0001-4000-8000-000000000001",
+      "name": "Receive POS Order",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "return-anchor-pos-order"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.RETURN_ANCHOR_URL + '/api/v1/pos/orders' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.RETURN_ANCHOR_API_KEY }}"
+            },
+            {
+              "name": "X-POS-Adapter",
+              "value": "generic"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "a11230fa-0002-4000-8000-000000000002",
+      "name": "Ask Return Anchor Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "a11230fa-0003-4000-8000-000000000003",
+      "name": "Return Stored Decision",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [780, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive POS Order": {
+      "main": [
+        [
+          {
+            "node": "Ask Return Anchor Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Return Anchor Engine": {
+      "main": [
+        [
+          {
+            "node": "Return Stored Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a11230fa-0000-4000-8000-000000000000",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
