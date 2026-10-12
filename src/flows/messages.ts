@@ -36,6 +36,12 @@ import { blackoutReason, walletUrl } from "./context";
 /** How long an offer sent by WhatsApp stays usable at the till. */
 export const MESSAGE_OFFER_VALID_DAYS = 14;
 
+/**
+ * A reminder that could not go out near its planned time (downtime, a long catch-up) has
+ * missed its moment; sending it days late is noise, so it is dropped instead.
+ */
+export const STALE_REMINDER_DAYS = 3;
+
 function costFor(category: MessageCategory, merchant: MerchantContext): number {
   if (category === "utility") return merchant.settings.messaging.utilityCostCents;
   if (category === "marketing") return merchant.settings.messaging.marketingCostCents;
@@ -282,6 +288,9 @@ async function dispatchOne(db: Db, message: Message, now: Date, cache: MerchantC
   let entitlement: EntitlementRecord | null = null;
   if (message.entitlementId) entitlement = await getEntitlement(db, merchant.merchant.id, message.entitlementId);
   const template = message.templateKey ? TEMPLATES[message.templateKey] : null;
+  if (template?.isReminder && now.getTime() - message.scheduledFor.getTime() > STALE_REMINDER_DAYS * 86_400_000) {
+    return suppress("Missed its moment (was due more than 3 days ago)");
+  }
 
   const evaluation = evaluateGuardrails(
     {
