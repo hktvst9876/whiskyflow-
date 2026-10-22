@@ -710,7 +710,7 @@ Non-critical rules can be switched off (`disabledRules`). Patches are validated 
 |---|---|---|
 | `demo` (default) | Messages are stored as delivered and shown in the console's demo phone. Nothing leaves the server | Nobody. Works on day one |
 | `console` | Messages are logged to stdout | Developer |
-| `meta` | WhatsApp Business Cloud API. Needs `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET` (verifies `X-Hub-Signature-256`), `WHATSAPP_VERIFY_TOKEN`, API `v21.0`, template language `en`. Webhook `/api/webhooks/whatsapp` | **Operator** (environment variables) |
+| `meta` | WhatsApp Business Cloud API. Needs `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET` (verifies `X-Hub-Signature-256`), `WHATSAPP_VERIFY_TOKEN`, API `v25.0`, template language `en`. Webhook `/api/webhooks/whatsapp` | **Operator** (environment variables) |
 
 - With `meta`, create and get approval for these templates, with exactly these names and variable orders: `anchor_confirmation_v1` (merchant, label, expiry) · `anchor_reminder_v1` (merchant, label, personal_line, offer_line) · `anchor_expiry_warning_v1` (merchant, label, expiry) · `anchor_win_back_v1` (merchant, label, perk_line) · `bottle_low_v1` (merchant, item, level) · `anchor_renewal_v1` (merchant, label, bonus_line) · `redemption_receipt_v1` (merchant, used, remaining) · `campaign_offer_v1` (merchant, headline). Balance and STOP/START replies are free-form, allowed only within 24 h of the customer's message.
 - **Constraint:** the provider is configured **per deployment**, not per merchant, so every merchant sends from the same number in the MVP. **Not yet built:** per-merchant sender numbers (embedded signup).

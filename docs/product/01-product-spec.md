@@ -1046,8 +1046,8 @@ Marketing opt-in rate at claim is therefore a key funnel metric (§10.5).
 | ID | Endpoint | Auth | Behaviour | Status |
 |---|---|---|---|---|
 | FR-A01 | `POST /api/v1/pos/orders` | `Authorization: Bearer <api key>` (hash lookup in `api_keys`, revocable) | Body = canonical order (`externalRef`, `status` open/closed/voided, `partySize`, `label`, `customer {phone?, redeemCode?}`, `lines[] {sku?, name, category?, quantity, unitPriceCents, unitCostCents?}`, `evaluateOffer` default true). Idempotent by `externalRef` (re-sending updates the visit). Lines match the catalog by SKU, then name. Returns the checkout offer when evaluated. Invalid payload → 400. | Built schema and generic adapter; route Designed |
-| FR-A02 | `GET /api/webhooks/whatsapp` | `hub.verify_token` = `WHATSAPP_VERIFY_TOKEN` | Meta verification handshake | Designed |
-| FR-A03 | `POST /api/webhooks/whatsapp` | `X-Hub-Signature-256` (HMAC with `WHATSAPP_APP_SECRET`) | Status updates and inbound messages, idempotent | Built verification; route Designed |
+| FR-A02 | `GET /api/webhooks/whatsapp` | `hub.verify_token` = `WHATSAPP_VERIFY_TOKEN` | Meta verification handshake | Built |
+| FR-A03 | `POST /api/webhooks/whatsapp` | `X-Hub-Signature-256` (HMAC with `WHATSAPP_APP_SECRET`) | Status updates and inbound messages, idempotent | Built |
 | FR-A04 | `POST /api/cron/tick` | `Authorization: Bearer <CRON_SECRET>` | `runSchedulerTick(now)`: expire anchors, plan reminder / expiry / win-back / bottle-low / renewal messages, dispatch due messages through the send-time policy, rescore stale customers, run the fraud scan | Designed |
 | FR-A05 | `GET /api/health` | none | Liveness | Designed |
 

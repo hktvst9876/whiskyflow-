@@ -36,7 +36,7 @@ const envSchema = z.object({
   /** Meta app secret used to verify `X-Hub-Signature-256` on webhooks. */
   WHATSAPP_APP_SECRET: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().optional(),
-  WHATSAPP_API_VERSION: z.string().default("v21.0"),
+  WHATSAPP_API_VERSION: z.string().default("v25.0"),
   WHATSAPP_TEMPLATE_LANGUAGE: z.string().default("en"),
 });
 
