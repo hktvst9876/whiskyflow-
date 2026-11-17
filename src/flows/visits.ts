@@ -5,7 +5,7 @@ import { maskPhone, normalisePhone } from "@/core/phone";
 import { inTransaction, type Db } from "@/server/db";
 import { entitlementLabel } from "@/modules/anchors/labels";
 import { applyAdjust, applyVoid, checkRedemptionRules, isExpired } from "@/modules/anchors/ledger";
-import { getEntitlement, listEntitlements, listEntitlementsForCustomer, type EntitlementRecord } from "@/modules/anchors/repo";
+import { getEntitlement, listEntitlements, listEntitlementsForCustomer, listPrograms, type EntitlementRecord } from "@/modules/anchors/repo";
 import { applyLedgerChange, claimTokenFor } from "@/modules/anchors/service";
 import { transparencyLines } from "@/modules/anchors/terms";
 import { findCustomerByPhone, findCustomerByRedeemCode, getCustomer, insertCustomer, type CustomerWithPromo } from "@/modules/customers/repo";
@@ -20,6 +20,7 @@ import { computeTotals } from "@/modules/visits/totals";
 import type { Visit, VisitLine, VisitTotals } from "@/modules/visits/types";
 import { assertSameMerchant, claimUrl, merchantFor, type FlowContext } from "./context";
 import { getCheckoutOffer, type CheckoutOfferView } from "./checkout-offer";
+import { redeemChoicesFor, type RedeemChoice } from "./redemption";
 
 /**
  * Staff POS-lite: open a bill, add items, identify the customer, remove lines. Removing a
@@ -156,13 +157,18 @@ export interface AnchorCard {
   maxCoveredPriceCents: number | null;
   upgradeAllowed: boolean;
   transferable: boolean;
+  issueMode: EntitlementRecord["issueMode"];
+  /** Most units one visit may use (null = no limit). */
+  maxUnitsPerVisit: number | null;
+  /** What the guest may pick for it; empty for bottles and kept packages. */
+  choices: RedeemChoice[];
   /** Can staff redeem it right now? */
   redeemable: boolean;
   blockedReason: string;
   terms: { label: string; value: string }[];
 }
 
-export function anchorCard(e: EntitlementRecord, merchant: MerchantContext, now: Date): AnchorCard {
+export function anchorCard(e: EntitlementRecord, merchant: MerchantContext, now: Date, choices: RedeemChoice[] = []): AnchorCard {
   let redeemable = e.status === "active" && !isExpired(e, now);
   let blockedReason = e.status === "pending_claim" ? "Not claimed yet" : e.status !== "active" ? e.status.replace("_", " ") : isExpired(e, now) ? "Expired" : "";
   if (redeemable) {
@@ -186,6 +192,9 @@ export function anchorCard(e: EntitlementRecord, merchant: MerchantContext, now:
     maxCoveredPriceCents: e.maxCoveredPriceCents,
     upgradeAllowed: e.termsSnapshot.upgradeAllowed,
     transferable: e.transferable,
+    issueMode: e.issueMode,
+    maxUnitsPerVisit: e.termsSnapshot.redemption.maxUnitsPerVisit ?? null,
+    choices,
     redeemable,
     blockedReason,
     terms: transparencyLines(e.termsSnapshot, { locale: merchant.merchant.locale, timeZone: merchant.merchant.timezone }),
@@ -243,7 +252,11 @@ export async function visitView(db: Db, ctx: FlowContext, visitId: string): Prom
       score: c.returnProbability === null ? null : Math.round(c.returnProbability * 100),
       visitCount: c.visitCount,
     };
-    anchors = (await listEntitlementsForCustomer(db, c.id, ["active", "pending_claim"])).map((e) => anchorCard(e, merchant, ctx.now));
+    const catalog = await listItems(db, ctx.merchantId, { activeOnly: true });
+    const programs = await listPrograms(db, ctx.merchantId);
+    anchors = (await listEntitlementsForCustomer(db, c.id, ["active", "pending_claim"])).map((e) =>
+      anchorCard(e, merchant, ctx.now, redeemChoicesFor(e, catalog, programs.find((p) => p.id === e.programId) ?? null)),
+    );
     const exposures = await usableExposuresForCustomer(db, c.id, ctx.now);
     promos = exposures.map((x) => ({
       exposureId: x.id,

@@ -6,7 +6,7 @@ import {
   offerPerformance,
 } from "@/modules/analytics/queries";
 import { loadMerchantContext } from "@/modules/merchants/repo";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { Alert } from "@/ui/alert";
 import { Badge, MetricNote } from "@/ui/badge";
 import { Card } from "@/ui/card";
@@ -17,7 +17,7 @@ import { Section } from "@/ui/section";
 import { Stat, StatGrid } from "@/ui/stat";
 
 export default async function AnalyticsPage() {
-  const { auth, db, now } = await withAuth("manager");
+  const { auth, db, now } = await withPageAuth("manager");
   const merchant = await loadMerchantContext(db, auth.merchantId);
   const from = new Date(now.getTime() - 30 * DAY_MS);
   const [a, lift, offers] = await Promise.all([

@@ -3,7 +3,7 @@ import { DAY_MS } from "@/core/time";
 import { listPrograms } from "@/modules/anchors/repo";
 import { offerPerformance } from "@/modules/analytics/queries";
 import { listDefinitions } from "@/modules/offers/repo";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { Badge, MetricNote } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { Money, Percent } from "@/ui/money";
@@ -11,7 +11,7 @@ import { PageHeader } from "@/ui/page-header";
 import { Section } from "@/ui/section";
 
 export default async function OffersPage() {
-  const { auth, db, now } = await withAuth("manager");
+  const { auth, db, now } = await withPageAuth("manager");
   const [programs, definitions, performance] = await Promise.all([
     listPrograms(db, auth.merchantId),
     listDefinitions(db, auth.merchantId),

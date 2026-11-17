@@ -44,7 +44,8 @@ export function programInputFromPreset(p: PresetProgram, keyToId: Map<string, st
     p.coverage.kind === "category"
       ? { kind: "category", category: p.coverage.category, maxCoveredPriceCents: p.coverage.maxCoveredPrice !== undefined ? toCents(p.coverage.maxCoveredPrice) : null }
       : { kind: "items", itemIds: p.coverage.itemKeys.map((k) => keyToId.get(k)).filter((id): id is string => Boolean(id)) };
-  const { minBasket, ...trigger } = p.trigger;
+  const { minBasket, requiredItemKeys, ...trigger } = p.trigger;
+  const requiredItemIds = requiredItemKeys?.map((k) => keyToId.get(k)).filter((id): id is string => Boolean(id));
   return {
     name: p.name,
     status: "active",
@@ -54,7 +55,11 @@ export function programInputFromPreset(p: PresetProgram, keyToId: Map<string, st
     unitLabelPlural: p.unitLabelPlural,
     unitsGranted: p.unitsGranted,
     coverage,
-    trigger: { ...trigger, ...(minBasket !== undefined ? { minBasketCents: toCents(minBasket) } : {}) },
+    trigger: {
+      ...trigger,
+      ...(minBasket !== undefined ? { minBasketCents: toCents(minBasket) } : {}),
+      ...(requiredItemIds && requiredItemIds.length > 0 ? { requiredItemIds } : {}),
+    },
     pricing: p.pricing,
     validityDays: p.validityDays,
     redemption: p.redemption,

@@ -33,6 +33,11 @@ export interface AnchorTrigger {
   minBasketCents?: number;
   /** e.g. { main: 2, side: 2 } = at least 2 mains and 2 sides already ordered. */
   requiredCategoryCounts?: Record<string, number>;
+  /**
+   * Upgrade offers: at least one of these items must be on the bill. Keep programmes
+   * (stored_purchase): the purchasable items the keep applies to, when they differ from
+   * what the kept units cover (a "3-Massage package" keeps 60-minute massages).
+   */
   requiredItemIds?: string[];
   minPartySize?: number;
 }

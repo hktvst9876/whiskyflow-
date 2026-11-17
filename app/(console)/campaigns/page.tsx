@@ -1,7 +1,7 @@
 import { FlaskConical, MessageCircle, Send } from "lucide-react";
 import { suggestedCampaigns } from "@/flows/campaigns";
 import { campaignPerformance } from "@/modules/analytics/queries";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import { Badge, MetricNote } from "@/ui/badge";
 import { Card } from "@/ui/card";
@@ -11,7 +11,7 @@ import { Section } from "@/ui/section";
 import { launchCampaignAction } from "./actions";
 
 export default async function CampaignsPage() {
-  const { auth, db, ctx, now } = await withAuth("manager");
+  const { auth, db, ctx, now } = await withPageAuth("manager");
   const [suggestions, performance] = await Promise.all([
     suggestedCampaigns(db, ctx),
     campaignPerformance(db, auth.merchantId, now),

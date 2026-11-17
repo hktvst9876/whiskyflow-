@@ -7,7 +7,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { loadMerchantContext } from "@/modules/merchants/repo";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { DescriptionList } from "@/ui/description-list";
@@ -16,7 +16,7 @@ import { PageHeader } from "@/ui/page-header";
 import { Section } from "@/ui/section";
 
 export default async function SettingsPage() {
-  const { auth, db } = await withAuth("manager");
+  const { auth, db } = await withPageAuth("manager");
   const { merchant, settings } = await loadMerchantContext(db, auth.merchantId);
   return (
     <>

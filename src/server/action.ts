@@ -1,11 +1,11 @@
 import "server-only";
-import { unstable_rethrow } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { ZodError } from "zod";
 import { isAppError } from "@/core/errors";
 import { logger, errorInfo } from "@/core/logger";
 import { fail, ok, type ActionResult } from "@/core/result";
-import type { Role } from "@/modules/merchants/types";
-import { requireAuth } from "@/modules/auth/session";
+import { hasRole, type Role } from "@/modules/merchants/types";
+import { getAuth, requireAuth } from "@/modules/auth/session";
 import type { AuthContext } from "@/modules/auth/service";
 import type { FlowContext } from "@/flows/context";
 import { getNow } from "./clock";
@@ -30,6 +30,23 @@ export async function withAuth(minimum: Role = "staff"): Promise<AuthedContext> 
   const db = await getDb();
   const now = await getNow(db);
   return { auth, db, now, ctx: { merchantId: auth.merchantId, actor: { type: auth.role === "staff" ? "staff" : "user", id: auth.userId }, now } };
+}
+
+/** Where each role lands after sign-in and when it opens a page it may not use. */
+export function homeFor(role: Role): string {
+  return role === "staff" ? "/pos" : "/dashboard";
+}
+
+/**
+ * `withAuth` for PAGES. A signed-in person without the role is sent to their own home
+ * (till staff to the till) instead of an error screen. Actions keep using `withAuth`,
+ * which refuses with a ForbiddenError that `runAction` turns into a form error.
+ */
+export async function withPageAuth(minimum: Role = "staff"): Promise<AuthedContext> {
+  const auth = await getAuth();
+  if (!auth) redirect("/login");
+  if (!hasRole(auth.role, minimum)) redirect(homeFor(auth.role));
+  return withAuth(minimum);
 }
 
 /** Run an action body and convert expected failures into `{ ok: false }`. */

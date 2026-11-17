@@ -46,7 +46,8 @@ export const spa: VerticalPreset = {
       unitLabelPlural: "Massages",
       unitsGranted: 3,
       coverage: { kind: "items", itemKeys: ["massage-60"] },
-      trigger: {},
+      // Sold as the 3-massage package; what stays in the wallet are 60-minute massages.
+      trigger: { requiredItemKeys: ["pack-3"] },
       pricing: { minPriceRate: 0, maxPriceRate: 0 },
       validityDays: 180,
       redemption: { maxUnitsPerVisit: 1 },

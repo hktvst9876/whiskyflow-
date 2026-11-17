@@ -34,7 +34,8 @@ export interface PresetProgram {
   unitLabelPlural: string;
   unitsGranted: number;
   coverage: PresetCoverage;
-  trigger: Omit<AnchorTrigger, "requiredItemIds"> & { minBasket?: number };
+  /** `requiredItemKeys` are resolved to `requiredItemIds` on import. */
+  trigger: Omit<AnchorTrigger, "requiredItemIds"> & { minBasket?: number; requiredItemKeys?: string[] };
   pricing: AnchorPricing;
   validityDays: number;
   redemption: AnchorRedemptionRules;

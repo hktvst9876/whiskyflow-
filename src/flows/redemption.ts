@@ -4,7 +4,9 @@ import { formatMoney } from "@/core/money";
 import { inTransaction, type Db } from "@/server/db";
 import { entitlementLabel, quantityText } from "@/modules/anchors/labels";
 import { applyLevel, applyRedeem, checkRedemptionRules, redemptionCostCents } from "@/modules/anchors/ledger";
-import { getEntitlement, type EntitlementRecord } from "@/modules/anchors/repo";
+import { getEntitlement, getProgram, type EntitlementRecord } from "@/modules/anchors/repo";
+import type { AnchorProgram } from "@/modules/anchors/types";
+import type { CatalogItem } from "@/modules/catalog/types";
 import { applyLedgerChange } from "@/modules/anchors/service";
 import { getItem, listItems } from "@/modules/catalog/repo";
 import { getCustomer } from "@/modules/customers/repo";
@@ -72,6 +74,45 @@ async function sendReceipt(db: Db, ctx: FlowContext, e: EntitlementRecord, used:
   if (message) await sendMessageNow(db, message.id, ctx.now);
 }
 
+export interface RedeemChoice {
+  itemId: string;
+  name: string;
+  /** What the guest pays on top when the choice is above what the anchor covers. */
+  extraCents: number;
+}
+
+/**
+ * What an anchor can be redeemed against. Category anchors ("any main up to $24") offer
+ * every item in the category; pricier ones only when upgrades are allowed, at the
+ * difference. Item anchors offer their item, plus pricier items of the same kind as an
+ * upgrade. Bottles and kept packages have no choice: it is simply what was kept.
+ */
+export function redeemChoicesFor(
+  e: Pick<EntitlementRecord, "unitType" | "issueMode" | "coveredCategory" | "maxCoveredPriceCents" | "itemId" | "unitRetailCents" | "termsSnapshot">,
+  catalog: CatalogItem[],
+  program: AnchorProgram | null,
+): RedeemChoice[] {
+  if (e.unitType === "percent" || e.issueMode === "stored_purchase") return [];
+  const active = catalog.filter((i) => i.active);
+  const upgrades = e.termsSnapshot.upgradeAllowed;
+  let pool: CatalogItem[];
+  let cap: number;
+  if (e.coveredCategory) {
+    pool = active.filter((i) => i.category === e.coveredCategory);
+    cap = e.maxCoveredPriceCents ?? Number.POSITIVE_INFINITY;
+  } else {
+    const ids = program?.coverage.kind === "items" ? program.coverage.itemIds : e.itemId ? [e.itemId] : [];
+    const covered = active.filter((i) => ids.includes(i.id));
+    const categories = new Set(covered.map((i) => i.category));
+    cap = e.unitRetailCents;
+    pool = upgrades ? active.filter((i) => ids.includes(i.id) || (categories.has(i.category) && i.priceCents > cap)) : covered;
+  }
+  return pool
+    .filter((i) => i.priceCents <= cap || upgrades)
+    .map((i) => ({ itemId: i.id, name: i.name, extraCents: Math.max(0, i.priceCents - cap) }))
+    .sort((a, b) => a.extraCents - b.extraCents || a.name.localeCompare(b.name));
+}
+
 /** Use units from an item/session anchor. */
 export async function redeemEntitlement(db: Db, ctx: FlowContext, input: RedeemInput): Promise<RedeemResult> {
   const quantity = input.quantity ?? 1;
@@ -84,16 +125,22 @@ export async function redeemEntitlement(db: Db, ctx: FlowContext, input: RedeemI
       if (already + quantity > perVisit) throw new ValidationError(`Up to ${perVisit} per visit on this anchor.`);
     }
     const lines: VisitLine[] = [];
+    // What the guest may choose for this anchor (and what a premium choice costs extra).
+    const catalog = await listItems(tx, ctx.merchantId, { activeOnly: true });
+    const program = e.programId ? await getProgram(tx, ctx.merchantId, e.programId).catch(() => null) : null;
+    const choices = redeemChoicesFor(e, catalog, program);
     const item = input.itemId ? await getItem(tx, ctx.merchantId, input.itemId) : null;
-    if (item && e.coveredCategory && item.category !== e.coveredCategory && e.itemId !== item.id) {
-      throw new ValidationError(`This anchor covers ${e.coveredCategory.replace(/_/g, " ")}, not ${item.name}.`);
+    const choice = item ? choices.find((c) => c.itemId === item.id) : undefined;
+    if (item && !choice) {
+      const cap = e.maxCoveredPriceCents;
+      throw new ValidationError(
+        cap !== null && item.category === e.coveredCategory
+          ? `This anchor covers ${e.unitLabelPlural.toLowerCase()} up to ${formatMoney(cap, { currency: merchant.merchant.currency, compact: true })}.`
+          : `This anchor does not cover ${item.name}.`,
+      );
     }
     // Premium upgrade: the anchor covers up to its cap; the customer pays the difference.
-    const cap = e.maxCoveredPriceCents ?? (item && e.itemId && item.id !== e.itemId ? e.unitRetailCents : null);
-    if (item && cap !== null && item.priceCents > cap) {
-      if (!e.termsSnapshot.upgradeAllowed) {
-        throw new ValidationError(`This anchor covers dishes up to ${formatMoney(cap, { currency: merchant.merchant.currency, compact: true })}.`);
-      }
+    if (item && choice && choice.extraCents > 0) {
       lines.push(
         await insertLine(tx, {
           merchantId: ctx.merchantId,
@@ -102,7 +149,7 @@ export async function redeemEntitlement(db: Db, ctx: FlowContext, input: RedeemI
           name: `Upgrade to ${item.name} (difference)`,
           category: item.category,
           quantity,
-          unitPriceCents: item.priceCents - cap,
+          unitPriceCents: choice.extraCents,
           unitCostCents: Math.max(0, item.costCents - e.unitCostCents),
           lineType: "regular",
           at: ctx.now,

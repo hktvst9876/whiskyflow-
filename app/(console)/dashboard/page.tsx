@@ -17,7 +17,7 @@ import {
 } from "@/modules/analytics/queries";
 import { loadMerchantContext } from "@/modules/merchants/repo";
 import { merchantVisitBaseline } from "@/modules/visits/repo";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { Badge, MetricNote } from "@/ui/badge";
 import { LinkButton } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -27,7 +27,7 @@ import { Section } from "@/ui/section";
 import { Stat, StatGrid } from "@/ui/stat";
 
 export default async function DashboardPage() {
-  const { auth, db, now } = await withAuth("staff");
+  const { auth, db, now } = await withPageAuth("manager");
   const merchant = await loadMerchantContext(db, auth.merchantId);
   const from = new Date(now.getTime() - 30 * DAY_MS);
   const [today, attribution, lift, baseline] = await Promise.all([

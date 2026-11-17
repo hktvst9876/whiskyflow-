@@ -7,7 +7,10 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { loginAction } from "../actions";
+import Link from "next/link";
+import { env } from "@/config/env";
 import { getAuth } from "@/modules/auth/session";
+import { homeFor } from "@/server/action";
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/flows/demo";
 import { seedStatus } from "@/server/seed-status";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
@@ -18,8 +21,11 @@ import { Progress } from "@/ui/progress";
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function LoginPage() {
-  if (await getAuth()) redirect("/dashboard");
+  const auth = await getAuth();
+  if (auth) redirect(homeFor(auth.role));
   const seed = seedStatus();
+  // Demo sign-in details are only ever shown (or pre-filled) in demo mode.
+  const demo = env().demoMode;
   return (
     <main className="min-h-screen lg:grid lg:grid-cols-[1.05fr_0.95fr]">
       <section className="relative hidden overflow-hidden bg-ink p-12 text-white lg:flex lg:flex-col lg:justify-between">
@@ -104,7 +110,7 @@ export default async function LoginPage() {
                 name="email"
                 type="email"
                 autoComplete="email"
-                defaultValue={DEMO_ACCOUNTS.owner.email}
+                defaultValue={demo ? DEMO_ACCOUNTS.owner.email : undefined}
                 required
               />
             </Field>
@@ -113,7 +119,7 @@ export default async function LoginPage() {
                 name="password"
                 type="password"
                 autoComplete="current-password"
-                defaultValue={DEMO_PASSWORD}
+                defaultValue={demo ? DEMO_PASSWORD : undefined}
                 required
               />
             </Field>
@@ -127,11 +133,23 @@ export default async function LoginPage() {
             </SubmitButton>
           </ActionForm>
 
-          <div className="mt-6 rounded-xl border border-line bg-surface-muted p-4 text-sm text-ink-muted">
-            <p className="font-semibold text-ink">Demo account</p>
-            <p className="mt-1">{DEMO_ACCOUNTS.owner.email}</p>
-            <p>Password: {DEMO_PASSWORD}</p>
-          </div>
+          {demo && (
+            <div className="mt-6 rounded-xl border border-line bg-surface-muted p-4 text-sm text-ink-muted">
+              <p className="font-semibold text-ink">Demo accounts</p>
+              <p className="mt-1">
+                Owner: {DEMO_ACCOUNTS.owner.email}
+                <br />
+                Till staff: {DEMO_ACCOUNTS.staff.email}
+              </p>
+              <p>Password for both: {DEMO_PASSWORD}</p>
+            </div>
+          )}
+          <p className="mt-6 text-sm text-ink-muted">
+            New here?{" "}
+            <Link href="/signup" className="font-medium text-accent-ink underline">
+              Set up your business
+            </Link>
+          </p>
         </div>
       </section>
     </main>

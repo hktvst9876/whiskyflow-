@@ -1,7 +1,7 @@
 import { Search, Users } from "lucide-react";
 import { customerList, type CustomerRow } from "@/modules/analytics/queries";
 import { loadMerchantContext } from "@/modules/merchants/repo";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { Badge } from "@/ui/badge";
 import { DataTable, type Column } from "@/ui/data-table";
 import { Input, Select } from "@/ui/field";
@@ -14,7 +14,7 @@ export default async function CustomersPage({
   searchParams: Promise<{ q?: string; segment?: string }>;
 }) {
   const filters = await searchParams;
-  const { auth, db, now } = await withAuth("staff");
+  const { auth, db, now } = await withPageAuth("manager");
   const merchant = await loadMerchantContext(db, auth.merchantId);
   const rows = await customerList(db, merchant, now, {
     search: filters.q || null,

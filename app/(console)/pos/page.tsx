@@ -1,6 +1,6 @@
 import { Clock3, Plus, ReceiptText, Users } from "lucide-react";
 import { listOpenVisits } from "@/flows/visits";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
@@ -13,7 +13,7 @@ import { openVisitAction } from "./actions";
 type Row = Awaited<ReturnType<typeof listOpenVisits>>[number];
 
 export default async function PosPage() {
-  const { auth, db, ctx } = await withAuth("staff");
+  const { auth, db, ctx } = await withPageAuth("staff");
   const rows = await listOpenVisits(db, ctx);
   const columns: Column<Row>[] = [
     {

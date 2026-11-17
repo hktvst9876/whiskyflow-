@@ -57,13 +57,20 @@ export async function closeVisit(db: Db, ctx: FlowContext, visitId: string): Pro
 
   if (customerId) await refreshCustomer(db, merchant, customerId, ctx.now);
 
-  let headline: string;
+  return { totals, headline: visitHeadline(totals, merchant.merchant) };
+}
+
+/**
+ * The one-liner for a closed bill (also used to re-show the summary later). Leads with
+ * what the visit earned that it would not have earned without the anchor.
+ */
+export function visitHeadline(totals: VisitTotals, format: { currency: string; locale: string }): string {
+  const money = (c: number) => formatMoney(c, { currency: format.currency, locale: format.locale, compact: true });
   if (totals.isRedemptionVisit) {
-    headline = `Redemption visit: ${money(totals.newCashRevenueCents)} new cash (GP ${money(totals.newCashGpCents)}) on top of what they already owned.`;
-  } else if (totals.anchorUpgradeRevenueCents > 0) {
-    headline = `New Return Anchor sold: ${money(totals.anchorUpgradeRevenueCents)} today, and a reason to come back.`;
-  } else {
-    headline = `Bill closed: ${money(totals.revenueCents)} (GP ${money(totals.gpCents)}).`;
+    return `Redemption visit: ${money(totals.newCashRevenueCents)} new cash (GP ${money(totals.newCashGpCents)}) on top of what they already owned.`;
   }
-  return { totals, headline };
+  if (totals.anchorUpgradeRevenueCents > 0) {
+    return `New Return Anchor sold: ${money(totals.anchorUpgradeRevenueCents)} today, and a reason to come back.`;
+  }
+  return `Bill closed: ${money(totals.revenueCents)} (GP ${money(totals.gpCents)}).`;
 }

@@ -18,7 +18,8 @@ import {
 } from "@/modules/auth/session";
 import { getDb } from "@/server/db";
 import { getNow } from "@/server/clock";
-import { runAction } from "@/server/action";
+import { homeFor, runAction } from "@/server/action";
+import { listMemberships } from "@/modules/auth/repo";
 import type { ActionResult } from "@/core/result";
 
 const loginSchema = z.object({
@@ -44,7 +45,9 @@ export async function loginAction(
       now: new Date(),
     });
     await setSessionCookie(session.token, session.expiresAt);
-    redirect("/dashboard");
+    // Till staff land on the till; owners and managers on Today.
+    const role = (await listMemberships(db, user.id))[0]?.role ?? "staff";
+    redirect(homeFor(role));
   });
 }
 
@@ -60,5 +63,6 @@ export async function switchMerchantAction(formData: FormData): Promise<void> {
   const auth = await getAuth();
   if (!auth) redirect("/login");
   await switchMerchant(await getDb(), auth, merchantId);
-  redirect("/dashboard");
+  const role = auth.memberships.find((m) => m.merchantId === merchantId)?.role ?? "staff";
+  redirect(homeFor(role));
 }

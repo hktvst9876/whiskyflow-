@@ -8,7 +8,7 @@ import {
 import { notFound } from "next/navigation";
 import { customerDetail } from "@/modules/analytics/queries";
 import { loadMerchantContext } from "@/modules/merchants/repo";
-import { withAuth } from "@/server/action";
+import { withPageAuth } from "@/server/action";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { DescriptionList } from "@/ui/description-list";
@@ -23,7 +23,7 @@ export default async function CustomerPage({
   params: Promise<{ customerId: string }>;
 }) {
   const { customerId } = await params;
-  const { auth, db, now } = await withAuth("staff");
+  const { auth, db, now } = await withPageAuth("manager");
   const merchant = await loadMerchantContext(db, auth.merchantId);
   let detail;
   try {
